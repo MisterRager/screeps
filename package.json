@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "build": "grunt screeps"
+  },
+  "dependencies": {
+    "grunt": "^0.4.5",
+    "grunt-screeps": "^1.2.0"
+  }
+}
