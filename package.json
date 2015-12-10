@@ -13,8 +13,9 @@
     "load-grunt-tasks": "^3.2.0"
   },
   "scripts": {
-    "watch": "rm -r dist; mkdir -p dist; babel --watch --stage 0 ./src -d ./dist",
-    "build": "rm -r dist; mkdir -p dist; babel --stage 0 ./src -d ./dist"
+    "watch": "rm -r dist; mkdir -p dist; grunt watch",
+    "build": "rm -r dist; mkdir -p dist; grunt babel",
+    "deploy": "rm -r dist; mkdir -p dist; grunt babel && grunt screeps"
   },
   "author": "Alan Rager <rager@ecsta.cc>",
   "license": "MIT"
