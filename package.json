@@ -1,10 +1,21 @@
 {
-  "scripts": {
-    "grunt-screeps": "grunt screeps"
-  },
-  "dependencies": {
+  "name": "screeps",
+  "version": "1.0.0",
+  "description": "Screeps Proeject",
+  "main": "dist/main.js",
+  "dependencies": {},
+  "devDependencies": {
+    "babel": "^5.8.21",
     "grunt": "^0.4.5",
-    "grunt-cli": "^0.1.13",
-    "grunt-screeps": "^1.2.0"
-  }
+    "grunt-babel": "^5.0.1",
+    "grunt-contrib-watch": "^0.6.1",
+    "grunt-screeps": "^1.1.0",
+    "load-grunt-tasks": "^3.2.0"
+  },
+  "scripts": {
+    "watch": "rm -r dist; mkdir -p dist; babel --watch --stage 0 ./src -d ./dist",
+    "build": "rm -r dist; mkdir -p dist; babel --stage 0 ./src -d ./dist"
+  },
+  "author": "Alan Rager <rager@ecsta.cc>",
+  "license": "MIT"
 }
