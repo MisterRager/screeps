@@ -9,6 +9,7 @@ To get started, run the following:
 ```
 npm install
 npm run build
+nmp run deploy
 ```
 
-To deploy, there's a config file to use, but I gitignored mine. (More info to come)
+To deploy, there's a config file, `/screeps.js` to fill out that the deploy task creates if it cannot find it. It will hold your login credentials, so don't commit it. 
