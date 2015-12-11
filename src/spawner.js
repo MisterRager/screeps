@@ -1,5 +1,6 @@
 import {creeps as roomCreeps, sources as roomSources} from 'room';
 import * as Worker from 'worker';
+import * as Source from 'source';
 
 import CreepTypes from 'creep_types';
 
@@ -54,20 +55,19 @@ function roleIsQueued(spawn, role) {
   return !!queue(spawn).find((item) => role === item);
 }
 
-export function nextSource(spawn, maxWorkers = undefined) {
+export function nextSource(spawn) {
   const allWorkers = workers(spawn);
   return roomSources(spawn.room).find((source) => {
+    // Get all workers assigned a given source
     const sourceWorkers = allWorkers.filter((creep) => {
       const sauce = Worker.source(creep);
       return sauce && sauce.id && source && source.id && sauce.id === source.id;
     });
 
-    if (maxWorkers) {
-      return sourceWorkers.length <= maxWorkers;
-    }
-
-    const workersPer = spawn.pos.findPathTo(source).length;
-    return sourceWorkers.length < (workersPer * Tunable.WorkersPerDistance);
+    const pathLength = spawn.pos.findPathTo(source).length;
+    const openSides = Source.openSideCount(source);
+    const workersPer = pathLength * Tunable.WorkersPerDistance * openSides / 8;
+    return sourceWorkers.length < workersPer;
   });
 }
 
