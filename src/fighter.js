@@ -1,6 +1,15 @@
+import CreepTypes from 'creep_types';
 import * as Room from 'room';
+import * as Worker  from 'worker';
 
 export const role = "fighter";
+
+export const BodyTiers = [
+  [TOUGH, MOVE, MOVE, ATTACK],
+  [TOUGH, TOUGH, MOVE, MOVE, ATTACK],
+];
+
+export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
 export function target(creep) {
   if (creep.memory.target) {
@@ -33,24 +42,46 @@ function clearTarget(creep) {
   creep.memory.target = undefined;
 }
 
+function patrolSourceInbound(creep, newVal = undefined) {
+  if (newVal !== undefined) {
+    return !!(creep.memory.patrolSourceInbound = newVal);
+  }
+  return !!creep.memory.patrolSourceInbound;
+}
+
+function patrolSource(creep) {
+  const sauce = Worker.source(creep);
+  const spawn = Worker.spawn(creep);
+
+  if (sauce && spawn) {
+    const inbound = patrolSourceInbound(creep);
+    let target = inbound ? spawn : sauce;
+    let from = inbound ? sauce : spawn;
+
+    if (Worker.adjacent(creep, target.pos)) {
+      patrolSourceInbound(creep, !inbound);
+      creep.moveTo(from);
+    } else {
+      creep.moveTo(target);
+    }
+  }
+}
+
 export default function fighter(creep) {
   if (creep) {
     const shootThis = target(creep);
     if (shootThis && shootThis.id) {
       const shootResult = creep.attack(shootThis);
-
-      console.log("Fighter", creep.id, shootThis.id, shootResult);
-
-        switch(shootResult) {
-        case ERR_INVALID_TARGET:
-          clearTarget(creep);
-          break;
-        case ERR_NOT_IN_RANGE:
-          creep.moveTo(shootThis);
-          break;
-        }
+      switch(shootResult) {
+      case ERR_INVALID_TARGET:
+        clearTarget(creep);
+        break;
+      case ERR_NOT_IN_RANGE:
+        creep.moveTo(shootThis);
+        break;
+      }
     } else {
-      console.log("shooting", shootThis);
+      patrolSource(creep);
     }
   }
 }

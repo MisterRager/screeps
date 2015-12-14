@@ -133,7 +133,7 @@ export default function builder(creep) {
   const site = constructionSite(creep)
     || constructionSite(creep, findConstructionSite(creep));
 
-  if (site) {
+  if (!underAttack(creep.room) && site) {
     if (isFull(creep)) {
       // Clear out the energy source
       energyRepository(creep, null);

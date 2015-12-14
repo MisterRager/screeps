@@ -1,7 +1,20 @@
+import CreepTypes from 'creep_types';
+
 export const role = "worker";
 
+export const BodyTiers = [
+  [CARRY, WORK, MOVE],
+  [CARRY, CARRY, WORK, WORK, MOVE]
+];
+
+export const bodyParts = CreepTypes.tierFunction(BodyTiers);
+
+export function energyDeficit(creep) {
+  return creep.carryCapacity - creep.carry.energy;
+}
+
 export function needsEnergy(creep) {
-  return creep.carry.energy < creep.carryCapacity;
+  return energyDeficit(creep) > 0;
 }
 
 export function source(creep, newSource = undefined) {
@@ -16,22 +29,21 @@ export function source(creep, newSource = undefined) {
   return creep.pos.findClosestByPath(Game.FIND_SOURCES);
 }
 
-export function spawn(creep) {
+export function spawn(creep, newVal = undefined) {
+  if (newVal !== undefined) {
+    creep.memory.spawn = (newVal && newVal.id) ? newVal.id : newVal;
+    return newVal;
+  }
+
   if (creep.memory.spawn) {
     return Game.getObjectById(creep.memory.spawn);
   }
   return creep.pos.findClosestByPath(Game.MY_SPAWNS);
 }
 
-function spawnerExpansions(spawn) {
-  return spawn.room.find(FIND_MY_STRUCTURES).filter((structure) => {
-    return structure.structureType === STRUCTURE_EXTENSION;
-  });
-}
-
 const RepositoryTypes = [STRUCTURE_EXTENSION, STRUCTURE_SPAWN];
 
-function energyRepositories(creep) {
+export function energyRepositories(creep) {
   return creep.room.find(FIND_MY_STRUCTURES)
     .filter((structure) => {
       return RepositoryTypes.find(
@@ -48,7 +60,16 @@ export function returning(creep) {
   return !!creep.memory.returnTarget;
 }
 
-function returnTarget(creep) {
+function nonFullRepository(repo) {
+  return (repo.energy !== undefined) && repo.energyCapacity
+    && repo.energyCapacity > repo.energy;
+}
+
+function returnTarget(creep, newVal = undefined) {
+  if (newVal !== undefined) {
+    creep.memory.returnTarget = (newVal && newVal.id) ? newVal.id : newVal;
+    return newVal;
+  }
   const creepSpawn = spawn(creep);
   const needRcl = !!creepSpawn.memory.levelRcl;
 
@@ -56,29 +77,21 @@ function returnTarget(creep) {
     return Game.getObjectById(creep.memory.returnTarget);
   } else {
     let target = null;
-
-    if (needRcl && (Math.random() < 0.25)) {
+    if (needRcl && (Math.random() < 0.3333)) {
       target = creep.room.controller;
     } else {
-      target = energyRepositories(creep).map(
-        (structure) => {
-          return {
-            structure: structure,
-            path: creep.pos.findPathTo(structure.pos)
-          };
-        }
-      ).sort((first, second) => {
-        return (first && first.path && first.path.length ?
-          first.path.length : 0) -
-          (second && second.path && second.path.length ?
-            second.path.length : 0);
-      }).map((sortable) => sortable.structure)[0];
+      const availableRepos = energyRepositories(creep).filter(
+        (repo) => nonFullRepository(repo)
+      );
+
+      if (availableRepos && availableRepos.length) {
+        target = creep.pos.findClosestByPath(availableRepos);
+      } else {
+        target = creep.room.controller;
+      }
     }
 
-    if (target) {
-      creep.memory.returnTarget = target.id;
-    }
-    return target;
+    return returnTarget(creep, target);
   }
 }
 
@@ -92,16 +105,14 @@ function returnEnergy(creep) {
   const res = creep[transferFn](target);
 
   switch (res) {
-  case ERR_NOT_ENOUGH_RESOURCES:
-    creep.memory.returnTarget = false;
-    break;
   case ERR_NOT_IN_RANGE:
     if (creep.moveTo(target) === ERR_NO_PATH) {
-      construct(creep);
+      returnTarget(creep, null);
     }
     break;
+  case ERR_NOT_ENOUGH_RESOURCES:
   case ERR_FULL:
-    construct(creep);
+    returnTarget(creep, null);
     break;
   }
 }
@@ -117,86 +128,10 @@ function harvestEnergy(creep) {
   }
 }
 
-function constructing(creep) {
-  return !!creep.memory.constructionSite;
-}
-
-function construct(creep, site = undefined) {
-  if (creep.memory.ignoreConstruction) {
-    creep.memory.ignoreConstruction = undefined;
-  }
-
-  let target = site;
-  if (site) {
-    creep.memory.constructionSite = site.id;
-  } else {
-    target = Game.getObjectById(creep.memory.constructionSite);
-  }
-
-  if (!target) {
-    target = findNearbyConstruction(creep)[0];
-  }
-
-  if (target) {
-    if (creep.memory.returnTarget) {
-      creep.memory.returnTarget = undefined;
-    }
-    const res = creep.build(target);
-
-    switch(res) {
-    case ERR_NOT_IN_RANGE:
-      creep.moveTo(target);
-      break;
-    case OK:
-      // do nothing
-      break;
-    case ERR_NOT_ENOUGH_RESOURCES:
-    default:
-      creep.memory.constructionSite = undefined;
-      creep.memory.ignoreConstruction = undefined;
-    }
-  } else {
-    creep.memory.constructionSite = undefined;
-    creep.memory.ignoreConstruction = undefined;
-  }
-}
-
-
-function shouldDoSweep(creep, cooldownTicks = 6) {
-  if (creep.memory.ignoreConstruction) {
-    return false;
-  } else if (creep.memory.ignoreConstruction === undefined) {
-    creep.memory.ignoreConstruction = Math.random() > 0.4;
-  }
-
-  let cooldown = creep.memory.sweepCooldown || 0;
-  if (--cooldown <= 0) {
-    creep.memory.sweepCooldown = cooldownTicks;
-    return true;
-  }
-
-  creep.memory.sweepCooldown = cooldown;
-  return false;
-}
-
-function findNearbyConstruction(creep, range = 6) {
-  if (shouldDoSweep(creep, range)) {
-    return creep.pos.findInRange(FIND_MY_CONSTRUCTION_SITES, range);
-  } else {
-    return [];
-  }
-}
-
 export default function worker(creep) {
-  if (constructing(creep)) {
-    construct(creep);
-  } else if (returning(creep) || !needsEnergy(creep)) {
-    const construction = findNearbyConstruction(creep);
-    if (construction.length) {
-      construct(creep, construction[0]);
-    } else {
-      returnEnergy(creep);
-    }
+  const sauce = source(creep);
+  if (returning(creep) || !needsEnergy(creep)) {
+    returnEnergy(creep);
   } else {
     harvestEnergy(creep);
   }

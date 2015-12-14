@@ -14,3 +14,8 @@ export function nonSourceKeepers(roomOrEnemies) {
   const enemyArr = roomOrEnemies.controller ? enemies(roomOrEnemies) : roomOrEnemies;
   return enemyArr.filter((creep) => creep.owner.username !== 'Source Keeper');
 }
+
+export function underAttack(room) {
+  const hostiles = nonSourceKeepers(room);
+  return hostiles && hostiles.length > 0;
+}
