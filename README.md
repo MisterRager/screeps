@@ -12,6 +12,6 @@ npm run build
 nmp run deploy
 ```
 
-To deploy, there's a config file, `/screeps.js` to fill out that the deploy task creates if it cannot find it. It will hold your login credentials, so don't commit it. 
+Before deploy will fully work, there's a config file, `/screeps.js` to fill out that the deploy task creates if it cannot find it. It will hold your login credentials, so don't commit it. 
 
 Also available is a watch job through `npm run watch`. It will continually update your code as you edit the copies in `src/`.
