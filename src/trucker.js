@@ -129,59 +129,6 @@ export const Machine = new StateMachine()
       )
   );
 
-const States = [
-  {
-    name: "berth_move",
-    action: (creep) => returnToBerth(creep, targetBerth(creep)),
-    changeConditions: [
-      {
-        newState: "collect",
-        trigger: (creep) => {
-          const berth = targetBerth(creep);
-          return !berth || Worker.adjacent(creep, berth.position(creep.room));
-        }
-      }
-    ],
-    defaultState: true
-  },
-  {
-    name: "collect",
-    action: (creep) => (collectEnergy(creep, targetResource(creep)
-      || targetResource(creep, findResource(creep)))),
-    changeConditions: [
-      {
-        newState: "berth_move",
-        trigger: (creep) => {
-          const berth = targetBerth(creep);
-          const resource = targetResource(creep)
-            || targetResource(creep, findResource(creep));
-          return !resource
-            && !!berth && !Worker.adjacent(creep, berth.position(creep.room));
-        }
-      },
-      {
-        newState: "deposit",
-        trigger: (creep) => Creep.full(creep)
-      }
-    ]
-  },
-  {
-    name: "deposit",
-    action: (creep) =>  {
-      returnEnergy(
-        creep,
-        Worker.returnTarget(creep)
-          || Worker.returnTarget(creep, Worker.findDepository(creep))
-      );
-    },
-    changeConditions: [
-      {
-        newState: "berth_move",
-        trigger: (creep) => Creep.empty(creep)
-      }
-    ]
-  }
-];
 
 export default function trucker(creep) {
   const currentState = Machine.resolveState(creep);

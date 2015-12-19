@@ -1,11 +1,15 @@
 import CreepTypes from 'creep_types';
 import * as Worker from 'worker';
 import {underAttack} from 'room';
+import State from 'state';
+import ChangeCondition from 'change_condition';
+import StateMachine from 'state_machine';
+import * as Creep from 'creep';
 
 export const role = "builder";
 
 export const BodyTiers = [
-  [CARRY, WORK, WORK, MOVE],
+  [CARRY, WORK, MOVE],
   [CARRY, CARRY, WORK, WORK, MOVE]
 ];
 
@@ -17,8 +21,14 @@ export const WarStructures = [
 ];
 
 export function shouldBuildMore(data) {
-  const {worker, builder} = data;
-  return worker > 3 && ((worker / 5 ) > builder);
+  const {
+    trucker = 0,
+    harvester = 0,
+    builder = 0,
+    worker = 0
+  } = data;
+  return ((trucker + harvester + builder + worker) === 0)
+    || (Math.floor(trucker / 3) > builder);
 }
 
 function findConstructionSite(creep) {
@@ -56,7 +66,7 @@ function constructionSite(creep, newVal = undefined) {
 
 function build(creep, site) {
   const res = creep.build(site);
-  //console.log("Building...", creep, site, res);
+  console.log("Building...", creep, site, res);
 
   switch(res) {
   case ERR_NOT_IN_RANGE:
@@ -134,21 +144,61 @@ function replenish(creep, repo) {
   }
 }
 
-export default function builder(creep) {
-  const site = constructionSite(creep)
-    || constructionSite(creep, findConstructionSite(creep));
+export const Machine = new StateMachine()
+  .addState(
+    new State("replenishing", (creep) => {
+      const repo = energyRepository(creep)
+        || energyRepository(creep, findEnergyRepository(creep));
+      if (Worker.adjacent(creep, repo.pos)) {
+        replenish(creep, repo);
+      } else {
+        creep.moveTo(repo.pos);
+      }
+    })
+      .markDefault()
+      .addChangeCondition(
+        new ChangeCondition("building", (creep) => {
+          return Creep.full(creep) && !!(
+            constructionSite(creep)
+              || constructionSite(creep, findConstructionSite(creep))
+          );
+        })
+      )
+      .addChangeCondition(
+        new ChangeCondition("levelRcl", (creep) => {
+          return Creep.full(creep) && !(
+            constructionSite(creep)
+              || constructionSite(creep, findConstructionSite(creep))
+          );
+        })
+      )
+  )
+  .addState(
+    new State("building",
+      (creep) => build(
+        creep,
+        constructionSite(creep)
+          || constructionSite(creep, findConstructionSite(creep))
+      )
+    )
+      .addChangeCondition(
+        new ChangeCondition("replenishing", (creep) => Creep.empty(creep))
+      )
+  )
+  .addState(
+    new State("levelRcl", (creep) => {
+      if (!Worker.adjacent(creep, creep.room.controller.pos)) {
+        creep.moveTo(creep.room.controller.pos);
+      } else {
+        Worker.returnEnergyTo(creep, creep.room.controller);
+      }
+    })
+      .addChangeCondition(
+        new ChangeCondition("replenishing", (creep) => Creep.empty(creep))
+      )
+  );
 
-  if (!underAttack(creep.room) && site) {
-    if (isFull(creep)) {
-      // Clear out the energy source
-      energyRepository(creep, null);
-    }
-    if (isReplenishing(creep)) {
-      replenish(creep, energyRepository(creep));
-    } else {
-      build(creep, site);
-    }
-  } else {
-    Worker.default(creep);
-  }
+export default function builder(creep) {
+  const currentState = Machine.resolveState(creep);
+  currentState.executeAction(creep);
 }

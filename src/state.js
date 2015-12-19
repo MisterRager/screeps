@@ -1,3 +1,5 @@
+import ChangeCondition from 'change_condition';
+
 export default class State {
   constructor(name, action) {
     this.name = name;

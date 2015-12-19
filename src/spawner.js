@@ -16,7 +16,12 @@ const Tunable = {
   truckersPerDistance: 0.1,
   FightersPerEnemy: 1,
   ActiveCreeps: [
-    Worker, Fighter, Healer, Builder, Trucker, Harvester
+    Worker,
+    //Fighter,
+    //Healer,
+    Builder,
+    Trucker,
+    Harvester
   ],
   Priority: {
     fighter: 100,
@@ -180,6 +185,17 @@ export function underservedBerths(spawn, creeps = undefined) {
 export function underservedHarvesters(spawnOrAllCreeps) {
   const allCreeps = (allCreeps.id !== undefined) ?
     Creeps.bySpawn(spawn) : spawnOrAllCreeps;
+
+  const serviceMap = allCreeps.reduce(
+    (anMap, creep) => {
+      if (Creep.role(creep) === Trucker.role) {
+        const harvester = Trucker.targetHarvester(creep);
+
+      }
+      return anMap;
+    },
+    new Map()
+  );
 }
 
 export function emptyBerths(spawn, creeps = undefined) {
@@ -343,9 +359,9 @@ export default function spawner(spawn) {
   });
 
   const {
-    harvester: harvesterCount,
-    worker: workerCount,
-    trucker: truckerCount
+    harvester: harvesterCount = 0,
+    worker: workerCount = 0,
+    trucker: truckerCount = 0
   } = counts;
 
   spawn.memory.levelRcl = levelRcl(
@@ -357,15 +373,27 @@ export default function spawner(spawn) {
     (creep) => {
       const activeType = typeByName(Creep.role(creep));
       switch(activeType.role) {
-      case Worker.role:
-        if (truckerCount > 0) {
-          Creep.role(creep, Harvester.role);
-        } else {
-          Worker.default(creep);
-        }
-        break;
       default:
-        activeType.default(creep);
+        let newBehavior = null;
+        // Find pluripotent creeps, assess role
+        if (Creep.hasParts(creep, [WORK, MOVE, CARRY])) {
+          if (harvesterCount < 2) {
+            if (truckerCount > 0) {
+              newBehavior = Harvester;
+            } else {
+              newBehavior = Worker;
+            }
+          } else {
+            newBehavior = Builder;
+          }
+        }
+
+        if (newBehavior && newBehavior.role !== Creep.role(creep)) {
+          Creep.role(creep, newBehavior.role);
+          newBehavior.default(creep);
+        } else {
+          activeType.default(creep);
+        }
       }
     }
   );

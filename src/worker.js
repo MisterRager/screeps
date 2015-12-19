@@ -10,8 +10,7 @@ export const BodyTiers = [
 export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
 export function shouldBuildMore(data) {
-  const {worker = 0, trucker = 0, harvester = 0} = data;
-  return worker === 0 && trucker < 1 && harvester < 1;
+  return false;
 }
 
 export function energyDeficit(creep) {
