@@ -1,21 +1,29 @@
-export function openSides(source, debug = false) {
+export function openSides(source) {
   const {x: posX, y: posY} = source.pos;
-  const surroundings = source.room.lookForAtArea(
-    "terrain",
-    posX - 1, posY - 1,
-    posX + 1, posY + 1
-  );
-  const openSides = []
+  const {room} = source;
+  const openSides = [];
 
-  for (let stepX in surroundings) {
-    for (let stepY in surroundings[stepX]) {
-      if (stepX != posX || stepY != posY) {
-        const cur = surroundings[stepX][stepY];
-        if (cur && cur.length && cur[0] !== "wall") {
-          openSides.push([stepX - posX, stepY - posY]);
+  for (let dX = -1; dX < 2; dX++) {
+    for (let dY = -1; dY < 2; dY++) {
+      if (dX !== 0 || dY !== 0) {
+        const lookX = posX + dX;
+        const lookY = posY + dY;
+        const cur = room.lookAt(lookX, lookY);
+
+        const isClear = cur.every(
+          (item) => {
+            const {terrain = null} = item;
+            return terrain !== "wall";
+          }
+        );
+
+        if (isClear) {
+          openSides.push([dX, dY]);
         }
+
       }
     }
   }
+
   return openSides;
 }

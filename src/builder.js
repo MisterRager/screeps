@@ -16,6 +16,11 @@ export const WarStructures = [
   STRUCTURE_TOWER,
 ];
 
+export function shouldBuildMore(data) {
+  const {worker, builder} = data;
+  return worker > 3 && ((worker / 5 ) > builder);
+}
+
 function findConstructionSite(creep) {
   if (!underAttack(creep.room)) {
     return creep.pos.findClosestByPath(FIND_MY_CONSTRUCTION_SITES);

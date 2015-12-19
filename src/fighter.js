@@ -11,6 +11,21 @@ export const BodyTiers = [
 
 export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
+export function shouldBuildMore(data) {
+  const {
+    worker = 0,
+    builder = 0,
+    fighter = 0,
+    trucker = 0,
+    harvester = 0,
+    hostiles = 0,
+    fightersPerEnemy = 1
+  } = data;
+
+  return (((worker + builder + trucker + harvester) / (fighter + 1)) > 3)
+    || ((hostiles * fightersPerEnemy) > fighter);
+}
+
 export function target(creep) {
   if (creep.memory.target) {
     const savedTarget = Game.getObjectById(creep.memory.target);
@@ -81,7 +96,7 @@ export default function fighter(creep) {
         break;
       }
     } else {
-      patrolSource(creep);
+      //patrolSource(creep);
     }
   }
 }

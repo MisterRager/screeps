@@ -19,3 +19,7 @@ export function underAttack(room) {
   const hostiles = nonSourceKeepers(room);
   return hostiles && hostiles.length > 0;
 }
+
+export function groundScores(room) {
+  return room.find(FIND_DROPPED_RESOURCES);
+}

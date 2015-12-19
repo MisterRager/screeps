@@ -4,15 +4,28 @@ import * as Source from 'source';
 import * as Fighter from 'fighter';
 import * as Healer from 'healer';
 import * as Builder from 'builder';
+import * as Harvester from 'harvester';
+import * as Trucker from 'trucker';
 import * as Creeps from 'creeps';
+import * as Creep from 'creep';
+import Berth from 'berth';
 import spawnerConstruction from 'spawner_construction';
 
 const Tunable = {
   workersPerDistance: 0.2,
+  truckersPerDistance: 0.1,
   FightersPerEnemy: 1,
   ActiveCreeps: [
-    Worker, Fighter, Healer, Builder
-  ]
+    Worker, Fighter, Healer, Builder, Trucker, Harvester
+  ],
+  Priority: {
+    fighter: 100,
+    healer: 50,
+    builder: 20,
+    trucker: 30,
+    harvester: 15,
+    worker: 10
+  }
 };
 
 export function queue(spawn, newVal = undefined) {
@@ -37,26 +50,6 @@ export function enqueue(spawn, type, priority = 10) {
   }
 }
 
-function needsHealer(damagedCount, healerCount) {
-  return damagedCount > healerCount;
-}
-
-function needsWorker(spawn) {
-  return !!nextSource(spawn);
-}
-
-function needsFighter(counts, hostileCount) {
-  const {
-    worker: workerCount = 0,
-    builder: builderCount = 0,
-    fighter: fighterCount = 0,
-  } = counts;
-
-  return ((workerCount + builderCount > 1) && fighterCount < 1)
-    || ((workerCount + builderCount) / fighterCount > 3)
-    || (hostileCount * Tunable.FightersPerEnemy > fighterCount);
-}
-
 function roleIsQueued(spawn, role) {
   return !!queue(spawn).find((item) => (item && role === item[0]));
 }
@@ -68,7 +61,7 @@ function removeFirst(spawn) {
 function incrementPriorities(spawn) {
   queue(
     spawn,
-    spawn.map((entry) => {return [entry[0], entry[1] + 1];})
+    queue(spawn).map((entry) => {return [entry[0], entry[1] + 1];})
   );
   prioritySortQueue(spawn);
 }
@@ -76,6 +69,29 @@ function incrementPriorities(spawn) {
 function firstQueuedRole(spawn) {
   const first = queue(spawn)[0];
   return (first && first.length) ? first[0] : null;
+}
+
+export function berths(spawn, source = undefined) {
+  let berths = null;
+  if (spawn.memory.berths && spawn.memory.berths.length) {
+    berths = spawn.memory.berths.map(Berth.unserialize);
+  } else {
+    berths = Room.sources(spawn.room).reduce(
+      (berthList, source) => {
+        return [
+          ...berthList,
+          ...Berth.sourceBerths(source)
+        ];
+      },
+      []
+    );
+    spawn.memory.berths = berths.map((bert) => bert.serialize());
+  }
+
+  if (source) {
+    return berths.filter((bert) => bert.source_id === source.id);
+  }
+  return berths;
 }
 
 export function nextSource(spawn) {
@@ -99,16 +115,11 @@ export function nextSource(spawn) {
 
     if (!spawn.memory.sourceWorkerMax) spawn.memory.sourceWorkerMax = new Map();
     if (!spawn.memory.sourceWorkerMax[source.id]) {
-      const pathLength = spawn.pos.findPathTo(source).length;
-      if (!spawn.memory.sourceClearance
-        || !spawn.memory.sourceClearance[source.id]
-      ) {
-        if (!spawn.memory.sourceClearances) {
-          spawn.memory.sourceClearances = new Map();
-        }
-        spawn.memory.sourceClearances[source.id] = Source.openSides(source);
-      }
-      const openSides = spawn.memory.sourceClearances[source.id].length;
+      const pathLength = spawn.pos.findPathTo(
+        source,
+        {ignoreCreeps: true}
+      ).length;
+      const openSides = berths(spawn, source).length;
       const workersPer = pathLength * Tunable.workersPerDistance + openSides;
       spawn.memory.sourceWorkerMax[source.id] = workersPer;
     }
@@ -117,13 +128,115 @@ export function nextSource(spawn) {
   return next;
 }
 
+export function underservedBerths(spawn, creeps = undefined) {
+  const truckers = (creeps && creeps.length) ?
+    creeps : Creeps.bySpawnAndType(spawn, Trucker.role);
+
+  const berthTruckerMap = truckers.reduce(
+    (buildMap, creep) => {
+      if (Creep.role(creep) === Trucker.role) {
+        const berth = Trucker.targetBerth(creep);
+
+        if (berth) {
+          const berthKey = berth.serialize();
+          if (!buildMap[berthKey] || buildMap[berthKey].length === undefined) {
+            buildMap[berthKey] = [creep];
+          } else {
+            buildMap[berthKey].push(creep);
+          }
+        }
+      }
+      return buildMap;
+    },
+    new Map()
+  );
+
+  return berths(spawn)
+    .map(
+    (berth) => {
+      const berthRoute = spawn.pos.findPathTo(
+        berth.position(spawn.room),
+        {ignoreCreeps: true}
+      );
+      return {
+        berth: berth,
+        distance: berthRoute.length,
+      };
+    }
+  ).filter(
+    (berthItem) => {
+      const {berth, distance} = berthItem;
+      const truckers = berthTruckerMap[berth.serialize()];
+      const truckerCount = (truckers && truckers.length !== undefined) ?
+        truckers.length : 0;
+
+      return (1 + distance * Tunable.truckersPerDistance) > truckerCount;
+    }
+  ).sort(
+    (berthA, berthB) => berthA.distance - berthB.distance
+  ).map((berthItem) => berthItem.berth);
+}
+
+export function underservedHarvesters(spawnOrAllCreeps) {
+  const allCreeps = (allCreeps.id !== undefined) ?
+    Creeps.bySpawn(spawn) : spawnOrAllCreeps;
+}
+
+export function emptyBerths(spawn, creeps = undefined) {
+  const creepList = (creeps && creeps.length) ?
+    creeps : Creeps.bySpawnAndType(spawn, Harvester.role);
+
+  const harvesterMap = creepList.reduce(
+    (buildMap,creep) => {
+      if (Creep.role(creep) === Harvester.role) {
+        const berth = Harvester.berth(creep);
+        if (berth) {
+          const berthKey = berth.serialize();
+          if (!buildMap[berthKey] || !buildMap[berthKey].length) {
+            buildMap[berthKey] = [creep];
+          } else {
+            buildMap[berthKey].push(creep);
+          }
+        }
+        return buildMap;
+      }
+    },
+    new Map()
+  );
+  return berths(spawn).filter((berth) => !harvesterMap[berth.serialize()]);
+}
+
+export function nextEmptyBerth(spawn, creeps = undefined) {
+  const distances = new Map();
+  return emptyBerths(spawn, creeps).sort(
+    (berthA, berthB) => {
+      const [valA, valB] = [berthA, berthB].map(
+        (berthItem) => {
+          const berthKey = berthItem.serialize();
+
+          if (!distances[berthKey]) {
+            return distances[berthKey] = spawn.pos.findPathTo(
+              berthItem.position(spawn.room)
+            ).length;
+          }
+          return distances[berthKey];
+        });
+      return valA - valB;
+    }
+  )[0];
+}
+
+export function nextUnderservedBerth(spawn, creeps = undefined) {
+  return underservedBerths(spawn, creeps)[0];
+}
+
 function typeByName(name) {
   return Tunable.ActiveCreeps.find((type) => name === type.role);
 }
 
 function bodyLoadout(role) {
   const activeType = typeByName(role);
-  if (activeType) {
+  if (!!activeType) {
     return activeType.bodyParts();
   }
   return false;
@@ -166,10 +279,20 @@ function processQueue(spawn, currentCreeps) {
     }
     break;
   case ERR_NAME_EXISTS:
+    console.log("Exists:", name);
     creepCount(spawn, queuedType, nameSeq + 1);
     processQueue(spawn, currentCreeps);
     break;
   }
+
+  incrementPriorities(spawn);
+}
+
+function levelRcl(spawn, counts = {}) {
+  const {hostiles = 0, worker = 0, harvester = 0, trucker = 0} = counts;
+  // Ready to start building
+  return (hostiles < 1 && trucker  > 5)
+    && (spawnerConstruction(spawn) === ERR_RCL_NOT_ENOUGH);
 }
 
 export default function spawner(spawn) {
@@ -178,13 +301,28 @@ export default function spawner(spawn) {
   const hostiles = Room.nonSourceKeepers(badGuys);
   const counts = new Map();
   const hostileCount = hostiles ? hostiles.length : 0;
+  const truckers = [];
   let damagedCount = 0;
 
   currentCreeps.forEach((creep) => {
-    counts[creep.memory.role] = counts[creep.memory.role] ?
-      counts[creep.memory.role] + 1 : 1;
+    const creepRole = Creep.role(creep);
+    counts[creepRole] = counts[creepRole] ?
+      counts[creepRole] + 1 : 1;
 
-    switch(creep.memory.role) {
+    switch(creepRole) {
+    case Trucker.role:
+      truckers.push(creep);
+      if (!Trucker.targetBerth(creep)) {
+        const newBerth = nextUnderservedBerth(spawn);
+        Trucker.targetBerth(creep, newBerth);
+      }
+      break;
+    case Harvester.role:
+      if (!Harvester.berth(creep)) {
+        const newBerth = nextEmptyBerth(spawn);
+        Harvester.berth(creep, newBerth);
+      }
+      break;
     case Builder.role:
       if (Builder.isBuilding(creep)) {
         break;
@@ -202,52 +340,53 @@ export default function spawner(spawn) {
     if (creep.hitsMax > creep.hits) {
       ++damagedCount;
     }
-
-    const activeType = typeByName(creep.memory.role);
-    if (activeType) {
-      activeType.default(creep);
-    }
   });
 
   const {
-    worker: workerCount = 0,
-    builder: builderCount = 0,
-    fighter: fighterCount = 0,
-    healer: healerCount = 0
+    harvester: harvesterCount,
+    worker: workerCount,
+    trucker: truckerCount
   } = counts;
 
-  if (needsFighter(counts, hostileCount) && !roleIsQueued(spawn, Fighter.role)) {
-    enqueue(spawn, Fighter.role, 100);
-  }
+  spawn.memory.levelRcl = levelRcl(
+    spawn,
+    {hostiles: hostiles.count, ...counts}
+  );
 
-  if (needsHealer(damagedCount, healerCount || 0) && !roleIsQueued(spawn, Healer.role)) {
-    enqueue(spawn, Healer.role, 50);
-  }
-
-  let levelRcl = false;
-
-  // Ready to start building
-  if (hostiles.length < 1 && workerCount  > 3) {
-    if (builderCount < 1 && !roleIsQueued(spawn, Builder.role)) {
-      enqueue(spawn, Builder.role, 20);
+  currentCreeps.forEach(
+    (creep) => {
+      const activeType = typeByName(Creep.role(creep));
+      switch(activeType.role) {
+      case Worker.role:
+        if (truckerCount > 0) {
+          Creep.role(creep, Harvester.role);
+        } else {
+          Worker.default(creep);
+        }
+        break;
+      default:
+        activeType.default(creep);
+      }
     }
-    if (spawnerConstruction(spawn) === ERR_RCL_NOT_ENOUGH) {
-       levelRcl = true;
+  );
+
+  const params = {
+    ...counts,
+    hostile: hostileCount,
+    damaged: damagedCount,
+    fightersPerEnemy: Tunable.FightersPerEnemy,
+    berths: berths(spawn).length
+  };
+
+  // Queue up any needed build jobs
+  Tunable.ActiveCreeps.forEach(
+    (type) => {
+      const role = type.role;
+      if (type.shouldBuildMore(params) && !roleIsQueued(spawn, role)) {
+        enqueue(spawn, role, Tunable.Priority[role]);
+      }
     }
-  }
-
-  spawn.memory.levelRcl = levelRcl;
-
-  if (needsWorker(spawn) && !roleIsQueued(spawn, Worker.role)) {
-    enqueue(spawn, Worker.role, 10);
-  }
-
-  if (workerCount > 3
-    && ((workerCount / 5 ) > builderCount)
-    && !roleIsQueued(spawn, Builder.role)
-  ) {
-    enqueue(spawn, Builder.role, 20);
-  }
+  );
 
   // Process creep build queue
   if (queue(spawn).length > 0) {

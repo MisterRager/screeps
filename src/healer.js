@@ -11,6 +11,11 @@ export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
 export const role = "healer";
 
+export function shouldBuildMore(data) {
+  const {healer = 0, fighter = 0, damaged = 0} = data;
+  return (damaged > healer) || (fighter > 1 && fighter > (1.5 * healer));;
+}
+
 export function patient(creep, newPatient = undefined) {
   if (newPatient) {
     creep.memory.patient = newPatient.id;
