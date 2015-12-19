@@ -66,7 +66,7 @@ function constructionSite(creep, newVal = undefined) {
 
 function build(creep, site) {
   const res = creep.build(site);
-  console.log("Building...", creep, site, res);
+  //console.log("Building...", creep, site, res);
 
   switch(res) {
   case ERR_NOT_IN_RANGE:

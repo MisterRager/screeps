@@ -366,34 +366,39 @@ export default function spawner(spawn) {
 
   spawn.memory.levelRcl = levelRcl(
     spawn,
-    {hostiles: hostiles.count, ...counts}
+    {hostiles: hostileCount, ...counts}
   );
 
   currentCreeps.forEach(
     (creep) => {
       const activeType = typeByName(Creep.role(creep));
-      switch(activeType.role) {
-      default:
-        let newBehavior = null;
-        // Find pluripotent creeps, assess role
-        if (Creep.hasParts(creep, [WORK, MOVE, CARRY])) {
-          if (harvesterCount < 2) {
-            if (truckerCount > 0) {
-              newBehavior = Harvester;
-            } else {
-              newBehavior = Worker;
-            }
-          } else {
-            newBehavior = Builder;
+      // Find pluripotent creeps, assess role
+      let newBehavior = null;
+      if (Creep.hasParts(creep, [WORK, MOVE, CARRY])) {
+        switch(activeType.role) {
+        case Worker.role:
+          if (truckerCount > 0) {
+            newBehavior = Harvester;
           }
+          break;
+        case Builder.role:
+          if (hostileCount > 0) {
+            newBehavior = harvesterCount > 2 ? Trucker : Harvester;
+          }
+          break;
+        case Harvester.role:
+        case Trucker.role:
+          if (hostileCount === 0 && truckerCount > 3) {
+            newBehavior = Builder
+          }
+          break;
         }
-
-        if (newBehavior && newBehavior.role !== Creep.role(creep)) {
-          Creep.role(creep, newBehavior.role);
-          newBehavior.default(creep);
-        } else {
-          activeType.default(creep);
-        }
+      }
+      if (newBehavior && newBehavior.role !== Creep.role(creep)) {
+        Creep.role(creep, newBehavior.role);
+        newBehavior.default(creep);
+      } else {
+        activeType.default(creep);
       }
     }
   );
