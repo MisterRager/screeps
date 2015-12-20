@@ -32,9 +32,9 @@ export function berth(creep, newVal = undefined) {
 export default function harvester(creep) {
   const harvesterBerth = berth(creep);
   if (!Creep.empty(creep)) {
-    const {power = 0, energy = 0} = creep.carry;
-    energy && creep.drop(RESOURCE_ENERGY, energy);
-    power && creep.drop(RESOURCE_POWER, power);
+    const {power, energy} = creep.carry;
+    energy > 0 && creep.drop(RESOURCE_ENERGY, energy);
+    power > 0 && creep.drop(RESOURCE_POWER, power);
   }
   if (harvesterBerth) {
     const pos = harvesterBerth.position(creep.room);

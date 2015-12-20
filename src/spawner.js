@@ -17,8 +17,8 @@ const Tunable = {
   FightersPerEnemy: 1,
   ActiveCreeps: [
     Worker,
-    //Fighter,
-    //Healer,
+    Fighter,
+    Healer,
     Builder,
     Trucker,
     Harvester
@@ -133,69 +133,63 @@ export function nextSource(spawn) {
   return next;
 }
 
-export function underservedBerths(spawn, creeps = undefined) {
-  const truckers = (creeps && creeps.length) ?
-    creeps : Creeps.bySpawnAndType(spawn, Trucker.role);
+export function underservedHarvesters(spawn) {
+  const creepList = Creeps.bySpawn(spawn);
 
-  const berthTruckerMap = truckers.reduce(
-    (buildMap, creep) => {
-      if (Creep.role(creep) === Trucker.role) {
-        const berth = Trucker.targetBerth(creep);
-
-        if (berth) {
-          const berthKey = berth.serialize();
-          if (!buildMap[berthKey] || buildMap[berthKey].length === undefined) {
-            buildMap[berthKey] = [creep];
-          } else {
-            buildMap[berthKey].push(creep);
-          }
-        }
-      }
-      return buildMap;
-    },
-    new Map()
-  );
-
-  return berths(spawn)
-    .map(
-    (berth) => {
-      const berthRoute = spawn.pos.findPathTo(
-        berth.position(spawn.room),
-        {ignoreCreeps: true}
-      );
-      return {
-        berth: berth,
-        distance: berthRoute.length,
-      };
-    }
-  ).filter(
-    (berthItem) => {
-      const {berth, distance} = berthItem;
-      const truckers = berthTruckerMap[berth.serialize()];
-      const truckerCount = (truckers && truckers.length !== undefined) ?
-        truckers.length : 0;
-
-      return (1 + distance * Tunable.truckersPerDistance) > truckerCount;
-    }
-  ).sort(
-    (berthA, berthB) => berthA.distance - berthB.distance
-  ).map((berthItem) => berthItem.berth);
-}
-
-export function underservedHarvesters(spawnOrAllCreeps) {
-  const allCreeps = (allCreeps.id !== undefined) ?
-    Creeps.bySpawn(spawn) : spawnOrAllCreeps;
-
-  const serviceMap = allCreeps.reduce(
+  const serviceMap = creepList.reduce(
     (anMap, creep) => {
       if (Creep.role(creep) === Trucker.role) {
         const harvester = Trucker.targetHarvester(creep);
-
+        if (harvester) {
+          if (!anMap.has(harvester.id) || !anMap[harvester.id]) {
+            anMap.set(harvester.id, {
+              truckers: [creep],
+              harvester: harvester
+            });
+          } else {
+            anMap.get(harvester.id).truckers.push(creep);
+          }
+        }
+      } else if (Creep.role(creep) === Harvester.role) {
+        if (!anMap.has(creep.id) || !anMap[creep.id]) {
+          anMap.set(creep.id, {
+            truckers: [],
+            harvester: creep
+          });
+        }
       }
       return anMap;
     },
     new Map()
   );
+  const underserved = [];
+
+  serviceMap.forEach(
+    (harvesterData, harvesterId) => {
+      const {harvester, truckers} = harvesterData;
+      const distance = spawn.pos.findPathTo(
+        harvester.pos,
+        {ignoreCreeps: true}
+      ).length;
+      const needsService = distance >
+        Math.round(truckers * Tunable.truckersPerDistance + 1);
+
+      if (needsService) {
+        underserved.push({
+          harvester: harvester,
+          distance: distance
+        });
+      }
+    }
+  );
+
+  return underserved.sort(
+    (dataA, dataB) => dataA.distance - dataB.distance
+  ).map((data) => data.harvester);
+}
+
+export function nextUnderservedHarvester(spawn) {
+  return underservedHarvesters(spawn)[0];
 }
 
 export function emptyBerths(spawn, creeps = undefined) {
@@ -240,10 +234,6 @@ export function nextEmptyBerth(spawn, creeps = undefined) {
       return valA - valB;
     }
   )[0];
-}
-
-export function nextUnderservedBerth(spawn, creeps = undefined) {
-  return underservedBerths(spawn, creeps)[0];
 }
 
 function typeByName(name) {
@@ -301,7 +291,7 @@ function processQueue(spawn, currentCreeps) {
     break;
   }
 
-  incrementPriorities(spawn);
+  //incrementPriorities(spawn);
 }
 
 function levelRcl(spawn, counts = {}) {
@@ -315,59 +305,56 @@ export default function spawner(spawn) {
   const currentCreeps = Creeps.bySpawn(spawn);
   const badGuys = Room.enemies(spawn.room);
   const hostiles = Room.nonSourceKeepers(badGuys);
-  const counts = new Map();
   const hostileCount = hostiles ? hostiles.length : 0;
-  const truckers = [];
   let damagedCount = 0;
 
-  currentCreeps.forEach((creep) => {
-    const creepRole = Creep.role(creep);
-    counts[creepRole] = counts[creepRole] ?
-      counts[creepRole] + 1 : 1;
+  // Set up missing creep state
+  const counts = currentCreeps.reduce(
+    (counts, creep) => {
+      const creepRole = Creep.role(creep);
+      const count = counts[creepRole];
+      counts[creepRole] =  count ? count + 1 : 1;
 
-    switch(creepRole) {
-    case Trucker.role:
-      truckers.push(creep);
-      if (!Trucker.targetBerth(creep)) {
-        const newBerth = nextUnderservedBerth(spawn);
-        Trucker.targetBerth(creep, newBerth);
-      }
-      break;
-    case Harvester.role:
-      if (!Harvester.berth(creep)) {
-        const newBerth = nextEmptyBerth(spawn);
-        Harvester.berth(creep, newBerth);
-      }
-      break;
-    case Builder.role:
-      if (Builder.isBuilding(creep)) {
+      switch(creepRole) {
+      case Trucker.role:
+        if (!Trucker.targetHarvester(creep)) {
+          const newHarvester = nextUnderservedHarvester(spawn);
+          Trucker.targetHarvester(creep, newHarvester);
+        }
+        break;
+      case Harvester.role:
+        if (!Harvester.berth(creep)) {
+          const newBerth = nextEmptyBerth(spawn);
+          Harvester.berth(creep, newBerth);
+        }
+        break;
+      case Builder.role:
+        if (Builder.isBuilding(creep)) {
+          break;
+        }
+      case Fighter.role:
+      case Worker.role:
+        const sauce = Worker.source(creep);
+        // Assign unassigned workers
+        if (!sauce || !sauce.id) {
+          Worker.source(creep, nextSource(spawn));
+        }
         break;
       }
-    case Fighter.role:
-    case Worker.role:
-      const sauce = Worker.source(creep);
-      // Assign unassigned workers
-      if (!sauce || !sauce.id) {
-        Worker.source(creep, nextSource(spawn));
-      }
-      break;
-    }
 
-    if (creep.hitsMax > creep.hits) {
-      ++damagedCount;
-    }
-  });
+      if (creep.hitsMax > creep.hits) {
+        ++damagedCount;
+      }
+      return counts;
+    },
+    new Map()
+  );
 
   const {
     harvester: harvesterCount = 0,
     worker: workerCount = 0,
     trucker: truckerCount = 0
   } = counts;
-
-  spawn.memory.levelRcl = levelRcl(
-    spawn,
-    {hostiles: hostileCount, ...counts}
-  );
 
   currentCreeps.forEach(
     (creep) => {
@@ -384,6 +371,8 @@ export default function spawner(spawn) {
         case Builder.role:
           if (hostileCount > 0) {
             newBehavior = harvesterCount > 2 ? Trucker : Harvester;
+          } else if (harvesterCount === 0) {
+            newBehavior = Harvester;
           }
           break;
         case Harvester.role:
@@ -397,6 +386,8 @@ export default function spawner(spawn) {
       if (newBehavior && newBehavior.role !== Creep.role(creep)) {
         Creep.role(creep, newBehavior.role);
         newBehavior.default(creep);
+        counts[activeType.role]--;
+        counts[newBehavior.role]++;
       } else {
         activeType.default(creep);
       }
@@ -404,17 +395,18 @@ export default function spawner(spawn) {
   );
 
   const params = {
-    ...counts,
     hostile: hostileCount,
     damaged: damagedCount,
     fightersPerEnemy: Tunable.FightersPerEnemy,
-    berths: berths(spawn).length
+    berths: berths(spawn).length,
+    underservedHarvesters: underservedHarvesters(spawn).length,
+    ...counts
   };
 
   // Queue up any needed build jobs
   Tunable.ActiveCreeps.forEach(
     (type) => {
-      const role = type.role;
+      const {role} = type;
       if (type.shouldBuildMore(params) && !roleIsQueued(spawn, role)) {
         enqueue(spawn, role, Tunable.Priority[role]);
       }

@@ -9,14 +9,15 @@ import StateMachine from 'state_machine';
 
 export const BodyTiers = [
   [CARRY, MOVE],
+  [CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE]
 ];
 
 export const role = 'trucker';
 export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
 export function shouldBuildMore(data) {
-  const {harvester = 0, trucker = 0, worker = 0} = data;
-  return trucker < (harvester + worker);
+  const {trucker = 0, underservedHarvesters = 0} = data;
+  return underservedHarvesters > 0;
 }
 
 export function targetResource(creep, newVal = undefined) {
@@ -27,6 +28,21 @@ export function targetResource(creep, newVal = undefined) {
 
   return Game.getObjectById(creep.memory.targetResource);
 }
+
+export function targetHarvester(creep, newVal = undefined) {
+  if (newVal !== undefined) {
+    creep.memory.targetHarvester = (newVal && newVal.id) ?
+      newVal.id : newVal;
+    return newVal;
+  }
+
+  if (creep.memory.targetHarvester) {
+    return Game.getObjectById(creep.memory.targetHarvester);
+  }
+
+  return null;
+}
+
 
 export function targetBerth(creep, newVal = undefined) {
   if (newVal !== undefined) {
@@ -69,14 +85,14 @@ function returnEnergy(creep, target) {
 
 export const Machine = new StateMachine()
   .addState(
-    new State("berth_move",(creep) => returnToBerth(creep, targetBerth(creep)))
+    new State("harvest_position",(creep) => creep.moveTo(targetHarvester(creep)))
       .markDefault()
       .addChangeCondition(
         new ChangeCondition(
           "collect",
           (creep) => {
-            const berth = targetBerth(creep);
-            return !berth || Worker.adjacent(creep, berth.position(creep.room));
+            const harvester = targetHarvester(creep);
+            return !harvester || Worker.adjacent(creep, harvester);
           }
         )
       )
@@ -91,13 +107,12 @@ export const Machine = new StateMachine()
     )
       .addChangeCondition(
         new ChangeCondition(
-          "berth_move",
+          "harvest_position",
           (creep) => {
-            const berth = targetBerth(creep);
+            const harvester = targetHarvester(creep);
             const resource = targetResource(creep)
               || targetResource(creep, findResource(creep));
-            return !resource
-              && !!berth && !Worker.adjacent(creep, berth.position(creep.room));
+            return !resource && !!harvester && !Worker.adjacent(creep, harvester);
           }
         )
       )
@@ -123,7 +138,7 @@ export const Machine = new StateMachine()
     )
       .addChangeCondition(
         new ChangeCondition(
-          "berth_move",
+          "harvest_position",
           (creep) => Creep.empty(creep)
         )
       )

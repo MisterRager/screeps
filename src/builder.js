@@ -147,8 +147,12 @@ function replenish(creep, repo) {
 export const Machine = new StateMachine()
   .addState(
     new State("replenishing", (creep) => {
-      const repo = energyRepository(creep)
-        || energyRepository(creep, findEnergyRepository(creep));
+      let repo = energyRepository(creep);
+
+      if (!repo) {
+        repo = energyRepository(creep, findEnergyRepository(creep));
+      }
+
       if (Worker.adjacent(creep, repo.pos)) {
         replenish(creep, repo);
       } else {

@@ -13,13 +13,16 @@ export default class Berth {
   }
 
   path(thing) {
-    return thing.pos.findPathTo(
-      thing.room.getPositionAt(
-        this.getSource().pos.x + this.offsetX,
-        this.getSource().pos.y + this.offsetY
-      ),
-      {ignoreCreeps: true}
-    );
+    const source = this.getSource();
+    if (source) {
+      const {pos} = source;
+      const {x, y} = pos;
+      return thing.pos.findPathTo(
+        thing.room.getPositionAt(x + this.offsetX, y + this.offsetY),
+        {ignoreCreeps: true}
+      );
+    }
+    return null;
   }
 
   distance(thing) {

@@ -1,6 +1,14 @@
-import CreepTypes from 'creep_types';
+"use strict";
+
 import * as Fighter from 'fighter';
 import * as Worker from 'worker';
+import * as Creep from 'creep';
+import * as Creeps from 'creeps';
+import CreepTypes from 'creep_types';
+import StateMachine from 'state_machine';
+import ChangeCondition from 'change_condition';
+import State from 'state';
+
 
 export const BodyTiers = [
   [MOVE, HEAL],
@@ -26,17 +34,11 @@ export function patient(creep, newPatient = undefined) {
 }
 
 function findPatient(creep) {
-  const myCreeps = creep.room.find(FIND_MY_CREEPS);
+  const myCreeps = Creeps.byRoom(creep.room);
   const injuredArr = myCreeps.filter((creep) => isHurt(creep));
 
   if (injuredArr && injuredArr.length) {
     return creep.pos.findClosestByPath(injuredArr);
-  }
-
-  const fighterArr = myCreeps.filter((creep) => creep.role === Fighter.role);
-
-  if (fighterArr && fighterArr.length) {
-    return creep.pos.findClosestByPath(fighterArr);
   }
 
   return null;
@@ -46,15 +48,88 @@ export function isHurt(creep) {
   return creep.hits < creep.hitsMax;
 }
 
-export default function healer(creep) {
-  let currentPatient = patient(creep);
+function inRange(creep, target) {
+  return creep.pos.inRangeTo(target.pos, 3);
+}
 
-  if (currentPatient && isHurt(currentPatient)) {
-    if (!Worker.adjacent(creep, currentPatient)) {
-      creep.moveTo(currentPatient);
-    }
-    creep.heal(currentPatient);
-  } else {
-    patient(creep, findPatient(creep));
+function notInRange(creep, target) {
+  return !inRange(creep, target);
+}
+
+function noPatients(creep) {
+  const ownPatient = patient(creep);
+  if (ownPatient) {
+    return ownPatient;
   }
+  return !patient(creep, findPatient(creep));
+}
+
+function hasDistantPatient(creep) {
+  const ownPatient = patient(creep);
+  return !!ownPatient && notInRange(creep, ownPatient);
+}
+
+function hasNearPatient(creep) {
+  const ownPatient = patient(creep);
+  return !!ownPatient && inRange(creep, ownPatient);
+}
+
+function goHealPatient(creep) {
+  let target = patient(creep);
+
+  if (!target || !isHurt(target)) {
+    target = patient(creep, findPatient(creep));
+  }
+
+  creep.heal(target);
+  if (!Worker.adjacent(creep, target)) {
+    creep.moveTo(target);
+  }
+}
+
+function chasePatient(creep) {
+  let ownPatient = patient(creep);
+  if (!ownPatient) {
+    ownPatient = patient(creep, findPatient(creep));
+  }
+
+  if (ownPatient) {
+    creep.moveTo(ownPatient);
+  }
+}
+
+function chaseFighter(creep) {
+  const spawn = Worker.spawn(creep);
+  const myCreeps = Creeps.byRoom(creep.room);
+  const fighters = Creeps.roleFilter(myCreeps, Fighter.role);
+  const nearestFighter = creep.pos.findClosestByRange(fighters);
+
+  if (nearestFighter && !Worker.adjacent(creep, nearestFighter)) {
+    creep.moveTo(nearestFighter);
+  }
+}
+
+export const Machine = new StateMachine()
+  .addState(
+    new State("heal", goHealPatient)
+      .markDefault()
+      .addChangeCondition(new ChangeCondition("pursue", hasDistantPatient))
+      .addChangeCondition(new ChangeCondition("battle_ready", noPatients))
+  )
+  .addState(
+    new State("pursue", chasePatient)
+      .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
+      .addChangeCondition(new ChangeCondition("battle_ready", noPatients))
+  )
+  .addState(
+    new State("battle_ready", (creep) => {
+    })
+      .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
+      .addChangeCondition(new ChangeCondition("pursue", hasDistantPatient))
+  )
+  ;
+
+export default function healer(creep) {
+  const currentState = Machine.resolveState(creep);
+  currentState.executeAction(creep);
 }
