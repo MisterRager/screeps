@@ -57,33 +57,24 @@ function notInRange(creep, target) {
 }
 
 function noPatients(creep) {
-  const ownPatient = patient(creep);
-  if (ownPatient) {
-    return ownPatient;
-  }
-  return !patient(creep, findPatient(creep));
+  return !patient(creep) && !patient(creep, findPatient(creep));
 }
 
 function hasDistantPatient(creep) {
-  const ownPatient = patient(creep);
-  return !!ownPatient && notInRange(creep, ownPatient);
+  return !noPatients(creep) && notInRange(creep, patient(creep));
 }
 
 function hasNearPatient(creep) {
-  const ownPatient = patient(creep);
-  return !!ownPatient && inRange(creep, ownPatient);
+  return !noPatients(creep) && inRange(creep, patient(creep));
 }
 
 function goHealPatient(creep) {
-  let target = patient(creep);
-
-  if (!target || !isHurt(target)) {
-    target = patient(creep, findPatient(creep));
-  }
-
-  creep.heal(target);
-  if (!Worker.adjacent(creep, target)) {
-    creep.moveTo(target);
+  if (!noPatients(creep)) {
+    const target = patient(creep);
+    creep.heal(target);
+    if (!Worker.adjacent(creep, target)) {
+      creep.moveTo(target);
+    }
   }
 }
 
@@ -113,17 +104,16 @@ export const Machine = new StateMachine()
   .addState(
     new State("heal", goHealPatient)
       .markDefault()
-      .addChangeCondition(new ChangeCondition("pursue", hasDistantPatient))
       .addChangeCondition(new ChangeCondition("battle_ready", noPatients))
+      .addChangeCondition(new ChangeCondition("pursue", hasDistantPatient))
   )
   .addState(
     new State("pursue", chasePatient)
-      .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
       .addChangeCondition(new ChangeCondition("battle_ready", noPatients))
+      .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
   )
   .addState(
-    new State("battle_ready", (creep) => {
-    })
+    new State("battle_ready", Fighter.joinFormation)
       .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
       .addChangeCondition(new ChangeCondition("pursue", hasDistantPatient))
   )

@@ -100,7 +100,12 @@ export function berths(spawn, source = undefined) {
 }
 
 export function nextSource(spawn) {
-  const allWorkers = Creeps.workers(spawn);
+  const allCreeps = Room.creeps(spawn.room);
+  const workerRoles = [Worker.role, Harvester.role];
+  const allWorkers = allCreeps.filter(
+    (creep) => !!workerRoles.find((role) => role === Creep.role(creep))
+  );
+
   let next = Room.sources(spawn.room).find((source) => {
     const sourceKeepers = source.pos.findInRange(
       FIND_HOSTILE_CREEPS, 4
@@ -383,6 +388,8 @@ export default function spawner(spawn) {
           break;
         }
       }
+
+      // Set new role, execute role
       if (newBehavior && newBehavior.role !== Creep.role(creep)) {
         Creep.role(creep, newBehavior.role);
         newBehavior.default(creep);

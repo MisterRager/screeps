@@ -1,5 +1,6 @@
 import CreepTypes from 'creep_types';
 import * as Room from 'room';
+import * as Creeps from 'creeps';
 import * as Worker  from 'worker';
 import * as Creep from 'creep';
 import StateMachine from 'state_machine';
@@ -15,6 +16,10 @@ export const BodyTiers = [
 
 export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
+export const Tunable = {
+  formationDistance: 2
+};
+
 export function shouldBuildMore(data) {
   const {
     worker = 0,
@@ -26,7 +31,9 @@ export function shouldBuildMore(data) {
     fightersPerEnemy = 1
   } = data;
 
-  return (((worker + builder + trucker + harvester) / (fighter + 1)) > 3)
+  const softCreeps = worker + builder + trucker + harvester;
+
+  return (softCreeps > 1 && (((softCreeps + 1)/ fighter) > 3))
     || ((hostiles * fightersPerEnemy) > fighter);
 }
 
@@ -126,6 +133,48 @@ function peaceIdle(creep) {
   return !target(creep) && !patrolPos(creep);
 }
 
+export function squadLeader(creep, newVal = undefined) {
+  if (newVal !== undefined) {
+    creep.memory.squadLeader = (newVal && newVal.id) ?
+      newVal.id : newVal;
+    return newVal;
+  }
+
+  if (creep.memory.squadLeader) {
+    return Game.getObjectById(creep.memory.squadLeader);
+  }
+
+  return null;
+}
+
+export function joinFormation(creep) {
+  let leader = squadLeader(creep);
+
+  if (!leader) {
+    const fighters = Creeps.roleFilter(
+      Room.creeps(creep.room),
+      role
+    );
+
+    const furthestFighter = fighters.map(
+      (fighter) => {
+        return {
+          creep: fighter,
+          distance: creep.pos.getRangeTo(fighter)
+        };
+      }
+    ).sort((f1, f2) => (f2.distance - f1.distance))[0];
+
+    if (furthestFighter) {
+      leader = squadLeader(creep, furthestFighter.creep);
+    }
+  }
+
+  if (leader && !creep.pos.inRangeTo(leader, Tunable.formationDistance)) {
+    creep.moveTo(leader);
+  }
+}
+
 export const Machine = new StateMachine()
   .addState(
     new State("patrol_go", (creep) => creep.moveTo(patrolPos(creep)))
@@ -142,7 +191,7 @@ export const Machine = new StateMachine()
       .addChangeCondition(new ChangeCondition("attack", nearTarget))
   )
   .addState(
-    new State("idle", (creep) => {})
+    new State("idle", joinFormation)
       .addChangeCondition(new ChangeCondition("patrol_go", patrolPos))
       .addChangeCondition(new ChangeCondition("pursue", notNearTarget))
       .addChangeCondition(new ChangeCondition("attack", nearTarget))
@@ -158,7 +207,8 @@ export const Machine = new StateMachine()
       .addChangeCondition(new ChangeCondition("attack", nearTarget))
       .addChangeCondition(new ChangeCondition("patrol_go", peacePatrol))
       .addChangeCondition(new ChangeCondition("idle", peaceIdle))
-  );
+  )
+  ;
 
 export default function fighter(creep) {
   const currentState = Machine.resolveState(creep);
