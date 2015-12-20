@@ -23,3 +23,11 @@ export function underAttack(room) {
 export function groundScores(room) {
   return room.find(FIND_DROPPED_RESOURCES);
 }
+
+export function exits(room) {
+  return room.find(FIND_EXIT);
+}
+
+export function structures(room) {
+  return room.find(FIND_MY_STRUCTURES);
+}

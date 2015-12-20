@@ -5,11 +5,12 @@ import State from 'state';
 import ChangeCondition from 'change_condition';
 import StateMachine from 'state_machine';
 import * as Creep from 'creep';
+import * as Room from 'room';
 
 export const role = "builder";
 
 export const BodyTiers = [
-  [CARRY, WORK, MOVE],
+  [CARRY, WORK, WORK, MOVE],
   [CARRY, CARRY, WORK, WORK, MOVE]
 ];
 
@@ -27,8 +28,8 @@ export function shouldBuildMore(data) {
     builder = 0,
     worker = 0
   } = data;
-  return ((trucker + harvester + builder + worker) === 0)
-    || (Math.floor(trucker / 3) > builder);
+
+  return (Math.floor(trucker / 3) > builder);
 }
 
 function findConstructionSite(creep) {
@@ -144,6 +145,22 @@ function replenish(creep, repo) {
   }
 }
 
+function hasConstructionSite(creep) {
+  return !!(constructionSite(creep) || constructionSite(
+    creep, findConstructionSite(creep)
+  ));
+}
+
+function damagedBuildings(creep) {
+  return Room.structures(creep.room).filter(
+    (structure) => structure.hitsMax > structure.hits
+  );
+}
+
+function buildingsToHeal(creep) {
+  return damagedBuildings(creep).length;
+}
+
 export const Machine = new StateMachine()
   .addState(
     new State("replenishing", (creep) => {
@@ -161,20 +178,22 @@ export const Machine = new StateMachine()
     })
       .markDefault()
       .addChangeCondition(
-        new ChangeCondition("building", (creep) => {
-          return Creep.full(creep) && !!(
-            constructionSite(creep)
-              || constructionSite(creep, findConstructionSite(creep))
-          );
-        })
+        new ChangeCondition(
+          "repair",
+          (creep) => Creep.full(creep) && buildingsToHeal(creep)
+        )
       )
       .addChangeCondition(
-        new ChangeCondition("levelRcl", (creep) => {
-          return Creep.full(creep) && !(
-            constructionSite(creep)
-              || constructionSite(creep, findConstructionSite(creep))
-          );
-        })
+        new ChangeCondition(
+          "building",
+          (creep) => Creep.full(creep) && hasConstructionSite(creep)
+        )
+      )
+      .addChangeCondition(
+        new ChangeCondition(
+          "levelRcl",
+          (creep) => Creep.full(creep) && !hasConstructionSite(creep)
+        )
       )
   )
   .addState(
@@ -185,9 +204,8 @@ export const Machine = new StateMachine()
           || constructionSite(creep, findConstructionSite(creep))
       )
     )
-      .addChangeCondition(
-        new ChangeCondition("replenishing", (creep) => Creep.empty(creep))
-      )
+      .addChangeCondition(new ChangeCondition("replenishing", Creep.empty))
+      .addChangeCondition(new ChangeCondition("repair", buildingsToHeal))
   )
   .addState(
     new State("levelRcl", (creep) => {
@@ -197,9 +215,19 @@ export const Machine = new StateMachine()
         Worker.returnEnergyTo(creep, creep.room.controller);
       }
     })
-      .addChangeCondition(
-        new ChangeCondition("replenishing", (creep) => Creep.empty(creep))
-      )
+      .addChangeCondition(new ChangeCondition("replenishing", Creep.empty))
+  )
+  .addState(
+    new State("repair", (creep) => {
+      const building = creep.pos.findClosestByRange(damagedBuildings);
+
+      if (!Worker.adjacent(creep, building.pos)) {
+        creep.moveTo(building.pos);
+      } else {
+        creep.repair(building);
+      }
+    })
+      .addChangeCondition(new ChangeCondition("replenishing", Creep.empty))
   );
 
 export default function builder(creep) {

@@ -3,6 +3,7 @@ import * as Room from 'room';
 import * as Creeps from 'creeps';
 import * as Worker  from 'worker';
 import * as Creep from 'creep';
+import * as Healer from 'healer';
 import StateMachine from 'state_machine';
 import ChangeCondition from 'change_condition';
 import State from 'state';
@@ -17,7 +18,8 @@ export const BodyTiers = [
 export const bodyParts = CreepTypes.tierFunction(BodyTiers);
 
 export const Tunable = {
-  formationDistance: 2
+  formationDistance: 2,
+  fighterPrevalence: 3.2
 };
 
 export function shouldBuildMore(data) {
@@ -34,7 +36,7 @@ export function shouldBuildMore(data) {
 
   const softCreeps = worker + builder + trucker + harvester;
 
-  return (softCreeps > 1 && (((softCreeps + 1)/ fighter) > 3))
+  return (softCreeps > 1 && ((softCreeps/ (fighter + 1)) > Tunable.fighterPrevalence))
     || ((hostiles * fightersPerEnemy) > fighter)
     || (healer > fighter);
 }
@@ -183,6 +185,15 @@ export function joinFormation(creep) {
 
 export const Machine = new StateMachine()
   .addState(
+    new State("idle", joinFormation)
+      .markDefault()
+      .addChangeCondition(new ChangeCondition("patrol_go", (creep) => {
+        return !!patrolPos(creep) && !creep.pos.inRangeTo(Worker.spawn(creep).pos, 3);
+      }))
+      .addChangeCondition(new ChangeCondition("pursue", notNearTarget))
+      .addChangeCondition(new ChangeCondition("attack", nearTarget))
+  )
+  .addState(
     new State("patrol_go", (creep) => creep.moveTo(patrolPos(creep)))
       .markDefault()
       .addChangeCondition(new ChangeCondition("idle", noPatrolPosition))
@@ -193,12 +204,6 @@ export const Machine = new StateMachine()
   .addState(
     new State("patrol_return", (creep) => creep.moveTo(Worker.source(creep)))
       .addChangeCondition(new ChangeCondition("patrol_go", nearSource))
-      .addChangeCondition(new ChangeCondition("pursue", notNearTarget))
-      .addChangeCondition(new ChangeCondition("attack", nearTarget))
-  )
-  .addState(
-    new State("idle", joinFormation)
-      .addChangeCondition(new ChangeCondition("patrol_go", patrolPos))
       .addChangeCondition(new ChangeCondition("pursue", notNearTarget))
       .addChangeCondition(new ChangeCondition("attack", nearTarget))
   )

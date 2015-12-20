@@ -36,31 +36,33 @@ export function setupSwampRoads(spawn) {
     },
     []
   );
-  truckerSources.forEach(
-    (source) => {
-      console.log("Source", source);
+  return truckerSources.reduce(
+    (builtCount,source) => {
       const path = spawn.pos.findPathTo(
         source.pos,
         {ignoreCreeps: true}
       );
-      console.log(path);
-      path.forEach(
-        (step) => {
+      path.reduce(
+        (made, step) => {
           const {x, y} = step;
           const isSwamp = room.lookForAt("terrain", x, y).some(
             (square) => {
-              console.log(square);
               return square === 'swamp';
             }
           );
 
           if (isSwamp) {
-            console.log("Create road at ", x, y, room.getPositionAt(x, y));
-            console.log(room.getPositionAt(x, y).createConstructionSite(STRUCTURE_ROAD));
+            room.getPositionAt(x, y).createConstructionSite(STRUCTURE_ROAD);
+            return made + 1;;
           }
-        }
+          return made;
+        },
+        0
       );
-    }
+
+      return builtCount + 1;
+    },
+    0
   );
 }
 
@@ -92,7 +94,7 @@ export function setupExtensionSite(spawn, maxDistance=4) {
 }
 
 export default function spawnerConstruction(spawn) {
-  setupSwampRoads();
+  setupSwampRoads(spawn);
   const currentConstruction = spawn.room.find(FIND_MY_CONSTRUCTION_SITES);
 
   if (currentConstruction.every((site) => site.structureType !== STRUCTURE_EXTENSION)) {

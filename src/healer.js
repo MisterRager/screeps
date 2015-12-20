@@ -1,6 +1,5 @@
 "use strict";
 
-import * as Fighter from 'fighter';
 import * as Worker from 'worker';
 import * as Creep from 'creep';
 import * as Creeps from 'creeps';
@@ -57,6 +56,19 @@ function notInRange(creep, target) {
 }
 
 function hasPatients(creep) {
+  const nearbyPatients = creep.pos.findInRange(FIND_MY_CREEPS, 1)
+    .filter(isHurt);
+
+  if (nearbyPatients && nearbyPatients.length) {
+    const pick = Math.floor(Math.random() * nearbyPatients.length);
+    return !!patient(creep, nearbyPatients[pick]);
+  }
+
+  const priorityPatient = designated(creep);
+  if (priorityPatient && isHurt(priorityPatient)) {
+    return !!patient(creep, priorityPatient);
+  }
+
   const currentPatient = patient(creep);
   return (!!currentPatient && isHurt(currentPatient))
     || !!patient(creep, findPatient(creep));
@@ -75,39 +87,26 @@ function hasNearPatient(creep) {
 }
 
 function goHealPatient(creep) {
-  const nearbyPatients = creep.pos.findInRange(FIND_MY_CREEPS, 1)
-    .filter(isHurt);
-  if (nearbyPatients && nearbyPatients.length) {
-    const chosenPatient = nearbyPatients[Math.floor(nearbyPatients.length * Math.random())];
-    patient(creep, chosenPatient);
-    creep.heal(chosenPatient);
-  } else if(hasPatients(creep)) {
-    const curPatient = patient(creep);
-    if (creep.heal(curPatient) === ERR_NOT_IN_RANGE) {
-      creep.moveTo(curPatient);
-    }
+  const target = patient(creep);
+
+  if(creep.heal(target) === ERR_NOT_IN_RANGE) {
+    creep.moveTo(target);
   }
 }
 
 function chasePatient(creep) {
-  let ownPatient = patient(creep);
-  if (!ownPatient) {
-    ownPatient = patient(creep, findPatient(creep));
-  }
-
-  if (ownPatient) {
-    creep.moveTo(ownPatient);
-  }
+  const target = patient(creep);
+  target && creep.moveTo(target);
 }
 
-function chaseFighter(creep) {
-  const spawn = Worker.spawn(creep);
-  const myCreeps = Creeps.byRoom(creep.room);
-  const fighters = Creeps.roleFilter(myCreeps, Fighter.role);
-  const nearestFighter = creep.pos.findClosestByRange(fighters);
+export function designated(creep, newVal = undefined) {
+  return Creep.memoryValRelation(creep, "healer_designated", newVal);
+}
 
-  if (nearestFighter && !Worker.adjacent(creep, nearestFighter)) {
-    creep.moveTo(nearestFighter);
+function chaseDesignated(creep) {
+  const target = designated(creep);
+  if (target && !Worker.adjacent(creep, target)) {
+    creep.moveTo(target);
   }
 }
 
@@ -124,7 +123,7 @@ export const Machine = new StateMachine()
       .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
   )
   .addState(
-    new State("battle_ready", Fighter.joinFormation)
+    new State("battle_ready", chaseDesignated)
       .addChangeCondition(new ChangeCondition("heal", hasNearPatient))
       .addChangeCondition(new ChangeCondition("pursue", hasDistantPatient))
   )

@@ -2,6 +2,7 @@ import CreepTypes from 'creep_types';
 import * as Worker from 'worker';
 import * as Room from 'room';
 import * as Creep from 'creep';
+import * as Harvester from 'harvester';
 import Berth from 'berth';
 import State from 'state';
 import ChangeCondition from 'change_condition';
@@ -37,7 +38,11 @@ export function targetHarvester(creep, newVal = undefined) {
   }
 
   if (creep.memory.targetHarvester) {
-    return Game.getObjectById(creep.memory.targetHarvester);
+    const target = Game.getObjectById(creep.memory.targetHarvester);
+    if (target && Creep.role(target) === Harvester.role) {
+      return target;
+    }
+    return targetHarvester(creep, null);
   }
 
   return null;
@@ -59,7 +64,9 @@ export function targetBerth(creep, newVal = undefined) {
 }
 
 function findResource(creep) {
-  return creep.pos.findClosestByPath(Room.groundScores(creep.room));
+  return creep.pos.findClosestByRange(
+    creep.pos.findInRange(FIND_DROPPED_RESOURCES, 4)
+  );
 }
 
 function returnToBerth(creep, berth) {
@@ -83,65 +90,64 @@ function returnEnergy(creep, target) {
   }
 }
 
+function hasTargetEnergy(creep) {
+  return !!(
+    targetResource(creep) || targetResource(creep, findResource(creep))
+  );
+}
+
+function moveToEnergy(creep) {
+  creep.moveTo(targetResource(creep));
+}
+
+function hasNoTargetEnergy(creep) {
+  return !hasTargetEnergy(creep);
+}
+
+function nearHarvester(creep) {
+  const harvester = targetHarvester(creep);
+  return !!harvester && Worker.adjacent(creep, harvester);
+}
+
+function notNearHarvester(creep) {
+  const harvester = targetHarvester(creep);
+  return !!harvester && !Worker.adjacent(creep, harvester);
+}
+
+function nearResource(creep) {
+  return !!targetResource(creep) && Worker.adjacent(creep, targetResource(creep).pos);
+}
+
 export const Machine = new StateMachine()
   .addState(
     new State("harvest_position",(creep) => creep.moveTo(targetHarvester(creep)))
       .markDefault()
-      .addChangeCondition(
-        new ChangeCondition(
-          "collect",
-          (creep) => {
-            const harvester = targetHarvester(creep);
-            return !harvester || Worker.adjacent(creep, harvester);
-          }
-        )
-      )
+      .addChangeCondition(new ChangeCondition(
+        "collect", (creep) => notNearHarvester(creep) && !nearResource(creep)
+      ))
   )
   .addState(
-    new State(
-      "collect",
-      (creep) => collectEnergy(
+    new State("chaseEnergy", moveToEnergy)
+      .addChangeCondition(new ChangeCondition("harvest_position", hasNoTargetEnergy))
+      .addChangeCondition(new ChangeCondition("collect", nearResource))
+  )
+  .addState(
+    new State("collect",(creep) => collectEnergy(creep, targetResource(creep)))
+      .addChangeCondition(new ChangeCondition(
+        "harvest_position",
+        (creep) => hasNoTargetEnergy(creep) && notNearHarvester(creep)
+      ))
+      .addChangeCondition(new ChangeCondition("deposit", Creep.full))
+  )
+  .addState(
+    new State("deposit", (creep) =>  {
+      returnEnergy(
         creep,
-        targetResource(creep) || targetResource(creep, findResource(creep))
-      )
-    )
-      .addChangeCondition(
-        new ChangeCondition(
-          "harvest_position",
-          (creep) => {
-            const harvester = targetHarvester(creep);
-            const resource = targetResource(creep)
-              || targetResource(creep, findResource(creep));
-            return !resource && !!harvester && !Worker.adjacent(creep, harvester);
-          }
-        )
-      )
-      .addChangeCondition(
-        new ChangeCondition(
-          "deposit",
-          (creep) => {
-            return Creep.full(creep);
-          }
-        )
-      )
-  )
-  .addState(
-    new State(
-      "deposit",
-      (creep) =>  {
-        returnEnergy(
-          creep,
-          Worker.returnTarget(creep)
-            || Worker.returnTarget(creep, Worker.findDepository(creep))
-        );
-      }
-    )
-      .addChangeCondition(
-        new ChangeCondition(
-          "harvest_position",
-          (creep) => Creep.empty(creep)
-        )
-      )
+        Worker.returnTarget(creep)
+          || Worker.returnTarget(creep, Worker.findDepository(creep))
+      );
+    })
+    .addChangeCondition(new ChangeCondition("harvest_position",Creep.empty))
   );
 
 

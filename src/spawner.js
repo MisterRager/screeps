@@ -6,6 +6,8 @@ import * as Healer from 'healer';
 import * as Builder from 'builder';
 import * as Harvester from 'harvester';
 import * as Trucker from 'trucker';
+//import * as Shooter from 'trucker';
+//import * as Tank from 'trucker';
 import * as Creeps from 'creeps';
 import * as Creep from 'creep';
 import Berth from 'berth';
@@ -23,6 +25,11 @@ const Tunable = {
     Trucker,
     Harvester
   ],
+  Combatant: [
+    Fighter,
+    //Shooter,
+    //Tank
+  ],
   Priority: {
     fighter: 100,
     healer: 50,
@@ -36,28 +43,27 @@ const Tunable = {
 
 export function rallyPoint(spawn, newVal = undefined) {
   if (newVal !== undefined) {
-    const {x, y} = newVal;
-    if (x !== undefined && y !== undefined) {
-      spawn.rallyX = x;
-      spawn.rallyY = y;
-    } else{
-      spawn.rallyX = undefined;
-      spawn.rallyY = undefined;
+    if (newVal.x && newVal.y) {
+      spawn.memory.rallyPoint = {x: newVal.x, y: newVal.y};
+    } else {
+      spawn.memory.rallyPoint = undefined;
     }
-
     return newVal;
   }
 
-  const {rallyX, rallyY} = spawn.memory;
-  if (rallyX !== undefined && rallyY !== undefined) {
-    return spawn.room.getPositionAt(rallyX, rallyY);
+  if (spawn.memory.rallyPoint) {
+    const {x, y} = spawn.memory.rallyPoint;
+    return spawn.room.getPositionAt(x, y);
   }
 
-  const {x, y} = spawn.pos;
-
-  return rallyPoint(
-    spawn, spawn.room.getPositionAt(x-8, y)
-  );
+  const room = spawn.room;
+  const exits = Room.exits(room);
+  const pick = Math.floor(Math.random() * exits.length);
+  const exitPos = exits[pick];
+  const {pos: spawnPos} = spawn;
+  const path = spawnPos.findPathTo(exitPos);
+  const middle = path[Math.floor(path.length / 2)];
+  rallyPoint(spawn, room.getPositionAt(middle.x, middle.y));
 }
 
 export function queue(spawn, newVal = undefined) {
@@ -171,7 +177,7 @@ export function underservedHarvesters(spawn) {
   const serviceMap = creepList.reduce(
     (anMap, creep) => {
       if (Creep.role(creep) === Trucker.role) {
-        const harvester = Trucker.targetHarvester(creep);
+        const harvester = creep && Trucker.targetHarvester(creep);
         if (harvester) {
           if (!anMap.has(harvester.id) || !anMap[harvester.id]) {
             anMap.set(harvester.id, {
@@ -218,6 +224,20 @@ export function underservedHarvesters(spawn) {
   return underserved.sort(
     (dataA, dataB) => dataA.distance - dataB.distance
   ).map((data) => data.harvester);
+}
+
+export function emptyMedicPositions(spawn) {
+  const creeps = Creeps.bySpawn(spawn);
+  const medics = Creeps.roleFilter(creeps, Healer.role);
+
+  return creeps.filter((creep) => {
+    return Tunable.Combatant.some((type) => {
+      return type.role === Creep.role(creep);
+    }) && medics.every((medic) => {
+      const medicTarget = Healer.designated(medic);
+      return !medicTarget || medicTarget.id !== creep.id;
+    });
+  });
 }
 
 export function nextUnderservedHarvester(spawn) {
@@ -326,18 +346,12 @@ function processQueue(spawn, currentCreeps) {
   incrementPriorities(spawn);
 }
 
-function checkConstruction(spawn, counts = {}) {
-  const {hostiles = 0, worker = 0, harvester = 0, trucker = 0} = counts;
-  // Ready to start building
-  return (hostiles < 1 && trucker  > 5)
-    && (spawnerConstruction(spawn) === ERR_RCL_NOT_ENOUGH);
-}
-
 export default function spawner(spawn) {
   const currentCreeps = Creeps.bySpawn(spawn);
   const badGuys = Room.enemies(spawn.room);
   const hostiles = Room.nonSourceKeepers(badGuys);
   const hostileCount = hostiles ? hostiles.length : 0;
+  const needMedic = emptyMedicPositions(spawn);
   let damagedCount = 0;
 
   // Set up missing creep state
@@ -348,6 +362,11 @@ export default function spawner(spawn) {
       counts[creepRole] =  count ? count + 1 : 1;
 
       switch(creepRole) {
+      case Healer.role:
+        needMedic.length && (
+          Healer.designated(creep) || Healer.designated(creep, needMedic.pop())
+        );
+        break;
       case Trucker.role:
         if (!Trucker.targetHarvester(creep)) {
           const newHarvester = nextUnderservedHarvester(spawn);
@@ -365,7 +384,7 @@ export default function spawner(spawn) {
           break;
         }
       case Fighter.role:
-        //Fighter.patrolPos(creep, rallyPoint(spawn));
+        //Fighter.patrolPos(creep) || Fighter.patrolPos(creep, rallyPoint(spawn));
         break;
       case Worker.role:
         const sauce = Worker.source(creep);
@@ -390,7 +409,7 @@ export default function spawner(spawn) {
     trucker: truckerCount = 0
   } = counts;
 
-  checkConstruction(spawn, counts);
+  spawnerConstruction(spawn);
 
   currentCreeps.forEach(
     (creep) => {
@@ -400,8 +419,10 @@ export default function spawner(spawn) {
       if (Creep.hasParts(creep, [WORK, MOVE, CARRY])) {
         switch(activeType.role) {
         case Worker.role:
-          if (truckerCount > 0) {
+          if (truckerCount < 3) {
             newBehavior = Harvester;
+          } else {
+            newBehavior = Builder;
           }
           break;
         case Builder.role:
