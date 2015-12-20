@@ -161,6 +161,10 @@ function buildingsToHeal(creep) {
   return damagedBuildings(creep).length;
 }
 
+function noBuildingsToHeal(creep) {
+  return !buildingsToHeal(creep);
+}
+
 export const Machine = new StateMachine()
   .addState(
     new State("replenishing", (creep) => {
@@ -228,6 +232,7 @@ export const Machine = new StateMachine()
       }
     })
       .addChangeCondition(new ChangeCondition("replenishing", Creep.empty))
+      .addChangeCondition(new ChangeCondition("building", noBuildingsToHeal))
   );
 
 export default function builder(creep) {
