@@ -94,21 +94,25 @@ function patrolSource(creep) {
 }
 
 export function patrolPos(creep, newPos = undefined) {
-  if (newPos !== undefined) {
+  if (newPos) {
     const {x,y} = newPos;
     creep.memory.patrolX = x;
     creep.memory.patrolY = y;
     return newPos;
+  } else if (newPos !== undefined) {
+    creep.memory.patrolX = undefined;
+    creep.memory.patrolY = undefined;
+    return newPos;
   }
   const {patrolX, patrolY} = creep.memory;
-  if (patrolX !== undefined && patrolY !== undefined) {
+  if (Number.isInteger(patrolX * patrolY)) {
     return creep.room.getPositionAt(patrolX, patrolY);
   }
   return null;
 }
 
 function patrolArrived(creep) {
-  return Creep.isAt(patrolPos(creep));
+  return Creep.isAt(creep, patrolPos(creep));
 }
 
 function nearSource(creep) {

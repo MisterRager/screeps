@@ -31,7 +31,7 @@ const Tunable = {
     harvester: 15,
     worker: 10
   },
-  stepPriority: 0.5
+  stepPriority: 0.8
 };
 
 export function rallyPoint(spawn, newVal = undefined) {
@@ -365,6 +365,8 @@ export default function spawner(spawn) {
           break;
         }
       case Fighter.role:
+        //Fighter.patrolPos(creep, rallyPoint(spawn));
+        break;
       case Worker.role:
         const sauce = Worker.source(creep);
         // Assign unassigned workers
