@@ -219,7 +219,7 @@ export const Machine = new StateMachine()
   )
   .addState(
     new State("repair", (creep) => {
-      const building = creep.pos.findClosestByRange(damagedBuildings);
+      const building = creep.pos.findClosestByRange(damagedBuildings(creep));
 
       if (!Worker.adjacent(creep, building.pos)) {
         creep.moveTo(building.pos);
