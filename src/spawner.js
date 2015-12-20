@@ -30,8 +30,35 @@ const Tunable = {
     trucker: 30,
     harvester: 15,
     worker: 10
-  }
+  },
+  stepPriority: 0.5
 };
+
+export function rallyPoint(spawn, newVal = undefined) {
+  if (newVal !== undefined) {
+    const {x, y} = newVal;
+    if (x !== undefined && y !== undefined) {
+      spawn.rallyX = x;
+      spawn.rallyY = y;
+    } else{
+      spawn.rallyX = undefined;
+      spawn.rallyY = undefined;
+    }
+
+    return newVal;
+  }
+
+  const {rallyX, rallyY} = spawn.memory;
+  if (rallyX !== undefined && rallyY !== undefined) {
+    return spawn.room.getPositionAt(rallyX, rallyY);
+  }
+
+  const {x, y} = spawn.pos;
+
+  return rallyPoint(
+    spawn, spawn.room.getPositionAt(x-8, y)
+  );
+}
 
 export function queue(spawn, newVal = undefined) {
   if (newVal !== undefined) {
@@ -66,7 +93,7 @@ function removeFirst(spawn) {
 function incrementPriorities(spawn) {
   queue(
     spawn,
-    queue(spawn).map((entry) => {return [entry[0], entry[1] + 1];})
+    queue(spawn).map((entry) => {return [entry[0], entry[1] + Tunable.stepPriority];})
   );
   prioritySortQueue(spawn);
 }
@@ -296,10 +323,10 @@ function processQueue(spawn, currentCreeps) {
     break;
   }
 
-  //incrementPriorities(spawn);
+  incrementPriorities(spawn);
 }
 
-function levelRcl(spawn, counts = {}) {
+function checkConstruction(spawn, counts = {}) {
   const {hostiles = 0, worker = 0, harvester = 0, trucker = 0} = counts;
   // Ready to start building
   return (hostiles < 1 && trucker  > 5)
@@ -360,6 +387,8 @@ export default function spawner(spawn) {
     worker: workerCount = 0,
     trucker: truckerCount = 0
   } = counts;
+
+  checkConstruction(spawn, counts);
 
   currentCreeps.forEach(
     (creep) => {

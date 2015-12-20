@@ -28,16 +28,28 @@ export function shouldBuildMore(data) {
     trucker = 0,
     harvester = 0,
     hostiles = 0,
+    healer = 0,
     fightersPerEnemy = 1
   } = data;
 
   const softCreeps = worker + builder + trucker + harvester;
 
   return (softCreeps > 1 && (((softCreeps + 1)/ fighter) > 3))
-    || ((hostiles * fightersPerEnemy) > fighter);
+    || ((hostiles * fightersPerEnemy) > fighter)
+    || (healer > fighter);
 }
 
-export function target(creep) {
+export function target(creep, newVal = undefined) {
+  if (newVal !== undefined && newVal.id) {
+    creep.memory.target = newVal.id;
+    return newVal;
+  }
+  const nearbyTargets = creep.pos.findInRange(FIND_HOSTILE_CREEPS, 1);
+  if (nearbyTargets && nearbyTargets.length) {
+    const targetIndex = Math.floor(nearbyTargets.length * Math.random());
+    return target(creep, nearbyTargets[targetIndex]);
+  }
+
   if (creep.memory.target) {
     const savedTarget = Game.getObjectById(creep.memory.target);
     if (savedTarget) {
@@ -47,20 +59,10 @@ export function target(creep) {
 
   const eligibles = Room.nonSourceKeepers(creep.room);
   if (eligibles && eligibles.length) {
-    const chosen = eligibles.map((enemy) => {
-      return {
-        path: creep.pos.findPathTo(enemy.pos),
-        creep: enemy
-      };
-    }).sort((first, second) => {
-      return ((first && first.length) ? first.length : 0)
-        - ((second && second.length) ? second.length : 0);
-    })[0];
-
-    if (chosen) {
-      creep.memory.target = chosen.creep.id;
-      return chosen.creep;
-    }
+    return target(
+      creep,
+      creep.pos.findClosestByPath(eligibles)
+    );
   }
 
   return null;

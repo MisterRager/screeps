@@ -33,9 +33,13 @@ export function patient(creep, newPatient = undefined) {
   return creep.memory.patient ? Game.getObjectById(creep.memory.patient) : null;
 }
 
+export function isHurt(creep) {
+  return creep.hits < creep.hitsMax;
+}
+
 function findPatient(creep) {
   const myCreeps = Creeps.byRoom(creep.room);
-  const injuredArr = myCreeps.filter((creep) => isHurt(creep));
+  const injuredArr = myCreeps.filter(isHurt);
 
   if (injuredArr && injuredArr.length) {
     return creep.pos.findClosestByPath(injuredArr);
@@ -44,36 +48,43 @@ function findPatient(creep) {
   return null;
 }
 
-export function isHurt(creep) {
-  return creep.hits < creep.hitsMax;
-}
-
 function inRange(creep, target) {
-  return creep.pos.inRangeTo(target.pos, 3);
+  return creep.pos.inRangeTo(target.pos, 2);
 }
 
 function notInRange(creep, target) {
   return !inRange(creep, target);
 }
 
+function hasPatients(creep) {
+  const currentPatient = patient(creep);
+  return (!!currentPatient && isHurt(currentPatient))
+    || !!patient(creep, findPatient(creep));
+}
+
 function noPatients(creep) {
-  return !patient(creep) && !patient(creep, findPatient(creep));
+  return !hasPatients(creep);
 }
 
 function hasDistantPatient(creep) {
-  return !noPatients(creep) && notInRange(creep, patient(creep));
+  return hasPatients(creep) && notInRange(creep, patient(creep));
 }
 
 function hasNearPatient(creep) {
-  return !noPatients(creep) && inRange(creep, patient(creep));
+  return hasPatients(creep) && inRange(creep, patient(creep));
 }
 
 function goHealPatient(creep) {
-  if (!noPatients(creep)) {
-    const target = patient(creep);
-    creep.heal(target);
-    if (!Worker.adjacent(creep, target)) {
-      creep.moveTo(target);
+  const nearbyPatients = creep.pos.findInRange(FIND_MY_CREEPS, 1)
+    .filter(isHurt);
+  if (nearbyPatients && nearbyPatients.length) {
+    const chosenPatient = nearbyPatients[Math.floor(nearbyPatients.length * Math.random())];
+    patient(creep, chosenPatient);
+    creep.heal(chosenPatient);
+  } else if(hasPatients(creep)) {
+    const curPatient = patient(creep);
+    if (creep.heal(curPatient) === ERR_NOT_IN_RANGE) {
+      creep.moveTo(curPatient);
     }
   }
 }
