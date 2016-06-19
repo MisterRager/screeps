@@ -19,6 +19,7 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-screeps');
   grunt.loadNpmTasks('grunt-contrib-watch');
 
+  var settings = getPrivateSettings(grunt);
   grunt.initConfig({
     watch: {
        scripts: {
@@ -42,20 +43,12 @@ module.exports = function(grunt) {
       }
     },
     screeps: {
-      options: {},
+      options: settings,
       dist: {
         src: ['dist/*.js']
       }
     }
   });
 
-  var settings = getPrivateSettings(grunt);
-  if (settings === false) {
-    console.log("screeps setting file created. Please edit ./screeps.js with your settings, and re-run grunt");
-
-    return;
-  }
-
-  grunt.config.merge(settings);
   grunt.registerTask('default', ['babel', 'screeps', 'watch']);
 };
